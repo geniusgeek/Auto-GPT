@@ -1,4 +1,5 @@
 import json
+import traceback
 from typing import Any, Dict, Union
 from call_ai_function import call_ai_function
 from config import Config
@@ -34,11 +35,11 @@ def fix_and_parse_json(
     try:
         json_str = json_str.replace('\t', '')
         return json.loads(json_str)
-    except json.JSONDecodeError as _:  # noqa: F841
+    except json.JSONDecodeError as e1:
         json_str = correct_json(json_str)
         try:
             return json.loads(json_str)
-        except json.JSONDecodeError as _:  # noqa: F841
+        except json.JSONDecodeError as e2:
             pass
     # Let's do something manually:
     # sometimes GPT responds with something BEFORE the braces:
@@ -46,39 +47,41 @@ def fix_and_parse_json(
     # {"text": "I'm sorry, I don't understand. Please try again.",
     #  "confidence": 0.0}
     # So let's try to find the first brace and then parse the rest
-    #  of the string
+    #  of the string 
     try:
         brace_index = json_str.index("{")
         json_str = json_str[brace_index:]
         last_brace_index = json_str.rindex("}")
         json_str = json_str[:last_brace_index+1]
         return json.loads(json_str)
-    except json.JSONDecodeError as e:  # noqa: F841
+    except ValueError:
+        print("Error: Unable to find '{' character in JSON string")
+        return None
+    except json.JSONDecodeError as e3:
+        print("Error decoding JSON string:", str(e3))
+        print("JSON string:", json_str)
         if try_to_fix_with_gpt:
-            print("Warning: Failed to parse AI output, attempting to fix."
-                  "\n If you see this warning frequently, it's likely that"
-                  " your prompt is confusing the AI. Try changing it up"
-                  " slightly.")
+            print("Warning: Failed to parse AI output, attempting to fix.\n If you see this warning frequently, it's likely that your prompt is confusing the AI. Try changing it up slightly.")
             # Now try to fix this up using the ai_functions
             ai_fixed_json = fix_json(json_str, JSON_SCHEMA)
 
             if ai_fixed_json != "failed":
                 return json.loads(ai_fixed_json)
             else:
-                # This allows the AI to react to the error message,
-                #   which usually results in it correcting its ways.
+                # This allows the AI to react to the error message, which usually results in it correcting its ways.
                 print("Failed to fix ai output, telling the AI.")
                 return json_str
         else:
-            raise e
-            
-        
+            raise e3
+
+
+#fix the json
 def fix_json(json_str: str, schema: str) -> str:
-    """Fix the given JSON string to make it parseable and fully complient with the provided schema."""
+    """Fix the given JSON string to make it parseable and fully compliant with the provided schema."""
     
-    # Try to fix the JSON using gpt:
+    # Try to fix the JSON using GPT:
     function_string = "def fix_json(json_str: str, schema:str=None) -> str:"
-    args = [f"'''{json_str}'''", f"'''{schema}'''"]
+    args = [f"'''{json_str}'''", f"'''{schema}'''"] 
     description_string = "Fixes the provided JSON string to make it parseable"\
         " and fully complient with the provided schema.\n If an object or"\
         " field specified in the schema isn't contained within the correct"\
@@ -103,7 +106,6 @@ def fix_json(json_str: str, schema: str) -> str:
         return result_string
     except:  # noqa: E722
         # Get the call stack:
-        # import traceback
-        # call_stack = traceback.format_exc()
-        # print(f"Failed to fix JSON: '{json_str}' "+call_stack)
+        call_stack = traceback.format_exc()
+        print(f"Failed to fix JSON: '{json_str}' "+call_stack)
         return "failed"
